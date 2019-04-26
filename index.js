@@ -11,6 +11,7 @@ const SLACK_CHANNEL = 'GJ759MWUC';
 const WAITING = 'waiting-to-start';
 const GUESSING = 'guessing-in-progress';
 
+var leaderboardTimestamp = "0";
 
 var gameState = {
 	type: WAITING
@@ -18,6 +19,13 @@ var gameState = {
 
 rtm.on('ready', async () => {
 	//rtm.sendMessage('Ready for the next game! Be the first to send in a DM with your keywords!', 'GJ759MWUC');	
+	if(fs.existsSync("./leaderbord_ts")) {
+		leaderboardTimestamp = fs.readFileSync("./leaderbord_ts");
+	} else {
+		var leaderboard = await rtm.sendMessage("*-=LEADERBOARD=-*\nNo one has won any rounds yet", SLACK_CHANNEL);
+		leaderboardTimestamp = leaderboard.ts;
+		fs.writeFileSync('./leaderbord_ts', leaderboard.ts);
+	}
 });
 
 rtm.on('message', async (msg) => {
@@ -34,8 +42,32 @@ function setWaiting() {
 	gameState = {type: WAITING}
 }
 
-function setGuessing() {
-	gameState = {type: GUESSING, startTime: new Date().getTime()}
+function setGuessing(gifThread, gifData) {
+	gameState = {
+		type: GUESSING, 
+		startTime: new Date().getTime(),
+		secondsRemaining: 30,
+		roundInterval: setInterval(() => {
+			gameState.secondsRemaining--;
+			if(gameState.secondsRemaining <= 0) {
+				clearInterval(gameState.roundInterval);
+				slack.chat.postMessage({
+					channel: SLACK_CHANNEL,
+					text: 'Time\'s up!',
+					thread_ts: gifThread
+				});
+			} else {
+				if(gameState.secondsRemaining % 10 === 0) {
+					slack.chat.postMessage({
+						channel: SLACK_CHANNEL,
+						text: `${gameState.secondsRemaining} seconds remaining!`,
+						thread_ts: gifThread
+					});
+				}
+			}
+		}, 1000)
+	}
+
 }
 
 function isGameChannel(channelId) {
@@ -60,20 +92,14 @@ async function processMessage(channelId, userId, text) {
 }
 
 async function waitingProcessDM(channelId, userId, text) {
-	rtm.sendMessage('Searching GIPHY for "' + text + '"', channelId);
 	giphy.search(text, async (err, res) => {
 		if(err) return rtm.sendMessage(err, channelId);
 		res.data = res.data.slice(0, 5);
 		var random = res.data[Math.floor(Math.random() * res.data.length)];
 		console.log(res);
-		var gifMsg = await rtm.sendMessage(random.bitly_url, channelId);
-		var msg = await rtm.sendMessage('*-=LEADERBOARD=-*', channelId);
-		fs.writeFileSync('./leaderboard_ts', msg.ts);
-		await slack.chat.update({ts: msg.ts, text: '*=LEADERBOARD=-*\nCameron - 0', channel: channelId});
+		var gifMsg = await rtm.sendMessage(random.bitly_url, SLACK_CHANNEL);
+		setGuessing(gifMsg.ts, random);
 		console.log(msg);
-		setTimeout(() => {
-			slack.chat.update({channel: channelId, ts: gifMsg.ts, text: `*Time remaining: {Math.floor(((gameState.startTime + 30000) - gameState.startTime) / 1000)} seconds\n{random.bitly_url}`}); 
-		}, 800);
 	});
 }
 
