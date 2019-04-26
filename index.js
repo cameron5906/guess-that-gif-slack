@@ -2,7 +2,7 @@ const { RTMClient } = require('@slack/rtm-api');
 const { WebClient } = require('@slack/web-api');
 const fs = require('fs');
 const token = process.env.SLACK_TOKEN;
-const giphy = require('giphy-api')('fcPl68xP0ipqvy2pQHl5h5wiQA5SjSOA');
+const giphy = require('giphy-api')(process.env.GIPHY_TOKEN);
 const rtm = new RTMClient(token);
 const slack = new WebClient(token);
 rtm.start().catch(console.err);
